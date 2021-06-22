@@ -41,7 +41,7 @@ peachy.__index = peachy
   -- If imageData isn't specified then Peachy will attempt to load it using the
   -- filename from the JSON data.
   --
-  -- If no initial tag is set then the object will be paused (i.e. not displayed) with no tag.
+  -- If no initial tag is set then new default tag is created
   -- The animation will start playing immediately once created.
   --
   -- @usage
@@ -53,8 +53,9 @@ peachy.__index = peachy
   -- which is useful for performance when creating large amounts of the same animation.
   -- @tparam Image imageData a LÖVE image  to animate.
   -- @tparam string initialTag the name of the animation tag to use initially.
+  -- @tparam bool paused.
   -- @return the new Peachy object.
-  function peachy.new(dataFile, imageData, initialTag)
+  function peachy.new(dataFile, imageData, initialTag, paused)
     assert(dataFile ~= nil, "No JSON data!")
   
     local self = setmetatable({}, peachy)
@@ -69,21 +70,19 @@ peachy.__index = peachy
 
   -- Load the image
   self.image = imageData or love.graphics.newImage(self._jsonData.meta.image)
+  self.direction = nil
+  self.tagName = nil
+  self.tag = nil
 
   self:_checkImageSize()
 
   self:_initializeFrames()
   self:_initializeTags()
 
-  self.paused = true
-
-  self.tag = nil
-  self.tagName = nil
-  self.direction = nil
+  self.paused = paused or #self.frames == 1
 
   if initialTag then
     self:setTag(initialTag)
-    self.paused = false
   end
 
   return self
@@ -290,9 +289,24 @@ function peachy:_initializeFrames()
   end
 end
 
+-- Internal: returns new tag
+function peachy:_newTag(from, to, direction)
+
+  local ft = {}
+  ft.direction = "forward"
+  ft.frames = {}
+
+  for frame = from, to do
+      table.insert(ft.frames, self.frames[frame])
+  end
+
+  return ft
+end
+
 --- Internal: loads all of the animation tags
 --
 -- Called from peachy.new
+-- If no frametags given, initialize a default frametag
 function peachy:_initializeTags()
   assert(self._jsonData ~= nil, "No JSON data!")
   assert(self._jsonData.meta ~= nil, "No metadata in JSON!")
@@ -300,16 +314,19 @@ function peachy:_initializeTags()
 
   self.frameTags = {}
 
+  -- Initialize default frametag
+  if #self._jsonData.meta.frameTags < 1 then
+    self.frameTags["default"] = self:_newTag(1, #self.frames, "forward")
+    self:setTag("default")
+  end
+
+  -- Initialize frametags
   for _, frameTag in ipairs(self._jsonData.meta.frameTags) do
-    local ft = {}
-    ft.direction = frameTag.direction
-    ft.frames = {}
+    self.frameTags[frameTag.name] = self:_newTag(frameTag.from + 1, frameTag.to + 1, frameTag.direction)
 
-    for frame = frameTag.from + 1, frameTag.to + 1 do
-      table.insert(ft.frames, self.frames[frame])
+    if not self.tag then
+        self:setTag(frameTag.name) -- Set first tag as initial
     end
-
-    self.frameTags[frameTag.name] = ft
   end
 end
 
